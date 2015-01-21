@@ -164,6 +164,16 @@ class DbStructureToExcel {
 		// TODO Write foreign key info to Excel.
 	}
 
+	static void close(AutoCloseable... resources) {
+		for (AutoCloseable resource : resources)
+			if (resource != null)
+				try {
+					resource.close();
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+	}
+
 	public static void main(String[] args) throws IOException, SQLException,
 			InvalidFormatException {
 		String ip = "localhost";
@@ -195,21 +205,20 @@ class DbStructureToExcel {
 			}
 		}
 		String url = "jdbc:mysql://" + ip + ":" + port + "/" + database;
-		try (Connection conn = getConnection(url, user, password);) {
-			DbStructureToExcel.conn = conn;
-			File target = new File("D:/Documents/" + database + ".xlsx");
-			try (InputStream in = new FileInputStream("src/DbStructure.xlsx");
-					OutputStream out = new FileOutputStream(target);) {
+		File target = new File("D:/Documents/" + database + ".xlsx");
+		try {
+			conn = getConnection(url, user, password);
+			out = new FileOutputStream(target);
+			wb = create(target);
+			try (InputStream in = new FileInputStream("src/DbStructure.xlsx");) {
 				byte[] bytes = new byte[in.available()];
 				in.read(bytes);
 				out.write(bytes);
-				DbStructureToExcel.out = out;
-				try (Workbook wb = create(target)) {
-					DbStructureToExcel.wb = wb;
-					write();
-					wb.write(out);
-				}
 			}
+			write();
+			wb.write(out);
+		} finally {
+			close(wb, out, conn);
 		}
 	}
 }
