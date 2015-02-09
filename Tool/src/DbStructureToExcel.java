@@ -25,6 +25,8 @@ import org.apache.poi.ss.usermodel.Workbook;
  * @since 1.7
  */
 class DbStructureToExcel {
+	
+	static DbUtil dbu;
 
 	static Connection conn;
 
@@ -50,6 +52,9 @@ class DbStructureToExcel {
 		return st.executeQuery();
 	}
 
+	/**
+	 * 
+	 */
 	static int getRow(ResultSet rs) throws SQLException {
 		rs.last();
 		return rs.getRow();
@@ -181,7 +186,7 @@ class DbStructureToExcel {
 		String user = "root";
 		String password = "";
 		database = "";
-		// A simulation of MySQL style commands.
+		// A raw simulation of MySQL style commands.
 		// Not tested yet.
 		for (String param : args) {
 			switch (param.substring(0, 2)) {
