@@ -1,5 +1,6 @@
-import static java.lang.Class.forName;
-import static java.sql.DriverManager.getConnection;
+package database;
+
+import static database.Utils.close;
 import static org.apache.poi.ss.usermodel.WorkbookFactory.create;
 
 import java.io.File;
@@ -8,15 +9,15 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 
 import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 /**
  * Fill MySQL database table structure data into a specified Excel file.
@@ -24,33 +25,15 @@ import org.apache.poi.ss.usermodel.Workbook;
  * @author Finally
  * @since 1.7
  */
-class DbStructureToExcel {
-	
-	static DbUtil dbu;
+class DatabaseToExcel {
 
-	static Connection conn;
+	static DbUtil dbu;
 
 	static String database;
 
-	static Workbook wb;
+	static Workbook structureWb;
 
-	static OutputStream out;
-
-	static {
-		try {
-			forName("com.mysql.jdbc.Driver");
-		} catch (ClassNotFoundException e) {
-			throw new RuntimeException(e);
-		}
-	}
-
-	static ResultSet executeQuery(String sql, Object... params)
-			throws SQLException {
-		PreparedStatement st = conn.prepareStatement(sql);
-		for (int i = 0; i < params.length; i++)
-			st.setObject(i + 1, params[i]);
-		return st.executeQuery();
-	}
+	static Workbook dataWb;
 
 	/**
 	 * 
@@ -62,28 +45,29 @@ class DbStructureToExcel {
 
 	static void write() throws SQLException {
 		String sql = "select TABLE_NAME,TABLE_COMMENT from information_schema.tables where TABLE_SCHEMA=?";
-		ResultSet rs = executeQuery(sql, database);
+		ResultSet rs = dbu.executeQuery(sql, database);
 		int sheetnum = 1;
 		while (rs.next()) {
-			Sheet sheet = wb.cloneSheet(0);
 			String tableName = rs.getString("TABLE_NAME");
-			wb.setSheetName(sheetnum, tableName);
-			Row row1 = sheet.getRow(1);
-			row1.createCell(3).setCellValue(tableName);
-			row1.createCell(5).setCellValue(rs.getString("TABLE_COMMENT"));
-			write(tableName);
+			Row row0 = structureWb.cloneSheet(0).getRow(0);
+			structureWb.setSheetName(sheetnum, tableName);
+			dataWb.createSheet(tableName);
+			row0.createCell(1).setCellValue(tableName);
+			row0.createCell(4).setCellValue(rs.getString("TABLE_COMMENT"));
+			writeStructure(tableName);
+			writeData(tableName);
 			sheetnum++;
 		}
-		wb.setSheetHidden(0, true);
+		structureWb.setSheetHidden(0, true);
 	}
 
-	static void write(String tableName) throws SQLException {
+	static void writeStructure(String tableName) throws SQLException {
 		String sql = "select ORDINAL_POSITION,COLUMN_NAME,COLUMN_TYPE,COLUMN_COMMENT,COLUMN_DEFAULT,IS_NULLABLE "
 				+ " from information_schema.columns where TABLE_SCHEMA=? and TABLE_NAME=?";
-		ResultSet rs = executeQuery(sql, database, tableName);
-		int rownum = 5;
+		ResultSet rs = dbu.executeQuery(sql, database, tableName);
+		int rownum = 2;
 		while (rs.next()) {
-			Row row = wb.getSheet(tableName).createRow(rownum);
+			Row row = structureWb.getSheet(tableName).createRow(rownum);
 			row.createCell(0).setCellValue(rs.getInt("ORDINAL_POSITION"));
 			row.createCell(1).setCellValue(rs.getString("COLUMN_NAME"));
 			row.createCell(2).setCellValue(rs.getString("COLUMN_TYPE"));
@@ -96,6 +80,26 @@ class DbStructureToExcel {
 		}
 	}
 
+	static void writeData(String tableName) throws SQLException {
+		String sql = "select * from " + tableName;
+		ResultSet rs = dbu.executeQuery(sql);
+		ResultSetMetaData rsmd = rs.getMetaData();
+		int columnCount = rsmd.getColumnCount();
+		Sheet sheet = dataWb.getSheet(tableName);
+		int rowNum = 1;
+		while (rs.next()) {
+			Row row = sheet.createRow(rowNum);
+			for (int i = 0; i < columnCount; i++)
+				row.createCell(i).setCellValue(rs.getString(i + 1));
+			rowNum++;
+		}
+		Row row0 = sheet.createRow(0);
+		for (int i = 0; i < columnCount; i++) {
+			sheet.autoSizeColumn(i);
+			row0.createCell(i).setCellValue(rsmd.getColumnName(i + 1));
+		}
+	}
+
 	/**
 	 * One table can only have one primary key constraint, while one primary key
 	 * constraint may contains more than one columns.
@@ -105,14 +109,13 @@ class DbStructureToExcel {
 				+ " join information_schema.table_constraints tc on kcu.TABLE_SCHEMA=tc.TABLE_SCHEMA "
 				+ " and kcu.TABLE_NAME=tc.TABLE_NAME and kcu.TABLE_CONSTRAINTS=tc.TABLE_CONSTRAINTS "
 				+ " where tc.TABLE_SCHEMA=? and tc.TABLE_NAME=? and CONSTRAINT_TYPE='PRIMARY KEY'";
-		ResultSet rs = executeQuery(sql, database, tableName);
+		ResultSet rs = dbu.executeQuery(sql, database, tableName);
 		StringBuilder primaryKey = new StringBuilder();
 		while (rs.next())
 			primaryKey.append(rs.getString("COLUMN_NAME")).append(",");
 		if (primaryKey.length() != 0)
 			primaryKey.deleteCharAt(primaryKey.length() - 1);
-		wb.getSheet(tableName).getRow(1).createCell(1)
-				.setCellValue(primaryKey.toString());
+		// TODO Write primary key info to Excel
 	}
 
 	/**
@@ -123,7 +126,7 @@ class DbStructureToExcel {
 	static void writeUniqueKey(String tableName) throws SQLException {
 		String sql = "select CONSTRAINT_NAME from information_schema.table_constraints "
 				+ " where TABLE_SCHEMA=? and TABLE_NAME=? and CONSTRAINT_TYPE='UNIQUE'";
-		ResultSet rs = executeQuery(sql, database, tableName);
+		ResultSet rs = dbu.executeQuery(sql, database, tableName);
 		StringBuilder unique = new StringBuilder();
 		while (rs.next())
 			unique.append(
@@ -131,16 +134,17 @@ class DbStructureToExcel {
 					.append(",");
 		if (unique.length() != 0)
 			unique.deleteCharAt(unique.length() - 1);
-		// TODO Write Unique key info to Excel.
+		// TODO Write unique key info to Excel.
 	}
 
 	static String writeUniqueKey(String tableName, String constraintName)
 			throws SQLException {
 		String sql = "select COLUMN_NAME from information_schema.key_column_usage "
 				+ " where TABLE_SCHEMA=? and TABLE_NAME=? and CONSTRAINT_NAME=?";
-		ResultSet rs = executeQuery(sql, database, tableName, constraintName);
-		int rownum = getRow(rs);
-		if (rownum == 1)
+		ResultSet rs = dbu.executeQuery(sql, database, tableName,
+				constraintName);
+		rs.last();
+		if (rs.getRow() == 1)
 			return rs.getString("COLUMN_NAME");
 		rs.beforeFirst();// must move the cursor to initial position
 		StringBuilder unique = new StringBuilder("(");
@@ -155,7 +159,7 @@ class DbStructureToExcel {
 				+ " join information_schema.table_constraints tc on kcu.TABLE_SCHEMA=tc.TABLE_SCHEMA "
 				+ " and kcu.TABLE_NAME=tc.TABLE_NAME and kcu.TABLE_CONSTRAINTS=tc.TABLE_CONSTRAINTS "
 				+ " where tc.TABLE_SCHEMA=? and tc.TABLE_NAME=? and CONSTRAINT_TYPE='FOREIGN KEY'";
-		ResultSet rs = executeQuery(sql, database, tableName);
+		ResultSet rs = dbu.executeQuery(sql, database, tableName);
 		StringBuilder foreignKey = new StringBuilder();
 		while (rs.next()) {
 			foreignKey.append(rs.getString("COLUMN_NAME"))
@@ -169,23 +173,13 @@ class DbStructureToExcel {
 		// TODO Write foreign key info to Excel.
 	}
 
-	static void close(AutoCloseable... resources) {
-		for (AutoCloseable resource : resources)
-			if (resource != null)
-				try {
-					resource.close();
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
-	}
-
 	public static void main(String[] args) throws IOException, SQLException,
 			InvalidFormatException {
 		String ip = "localhost";
 		int port = 3306;
 		String user = "root";
 		String password = "";
-		database = "";
+		database = "webit";
 		// A raw simulation of MySQL style commands.
 		// Not tested yet.
 		for (String param : args) {
@@ -210,20 +204,24 @@ class DbStructureToExcel {
 			}
 		}
 		String url = "jdbc:mysql://" + ip + ":" + port + "/" + database;
-		File target = new File("D:/Documents/" + database + ".xlsx");
-		try {
-			conn = getConnection(url, user, password);
-			out = new FileOutputStream(target);
-			wb = create(target);
-			try (InputStream in = new FileInputStream("src/DbStructure.xlsx");) {
+		File structure = new File("D:/Documents/" + database + "Structure.xlsx");
+		try (OutputStream structureOut = new FileOutputStream(structure);
+				OutputStream dataOut = new FileOutputStream("D:/Documents/"
+						+ database + "Data.xlsx")) {
+			dbu = new DbUtil(url, user, password);
+			try (InputStream in = new FileInputStream(
+					"src/database/Structure.xlsx");) {
 				byte[] bytes = new byte[in.available()];
 				in.read(bytes);
-				out.write(bytes);
+				structureOut.write(bytes);
 			}
+			structureWb = create(structure);
+			dataWb = new XSSFWorkbook();
 			write();
-			wb.write(out);
+			structureWb.write(structureOut);
+			dataWb.write(dataOut);
 		} finally {
-			close(wb, out, conn);
+			close(structureWb, dataWb, dbu);
 		}
 	}
 }
