@@ -57,11 +57,10 @@ class DatabaseToExcel {
 	}
 
 	static void writeStructure(String tableName) throws SQLException {
-		out.print("Analyzing table " + tableName + "...");
 		String sql = "select ORDINAL_POSITION,COLUMN_NAME,COLUMN_TYPE,COLUMN_COMMENT,COLUMN_DEFAULT,IS_NULLABLE "
 				+ " from information_schema.columns where TABLE_SCHEMA=? and TABLE_NAME=?";
 		ResultSet rs = dbu.executeQuery(sql, DATABASE, tableName);
-		int rownum = 2;
+		int rownum = 3;
 		while (rs.next()) {
 			Row row = structureWb.getSheet(tableName).createRow(rownum);
 			row.createCell(0).setCellValue(rs.getInt("ORDINAL_POSITION"));
@@ -74,10 +73,11 @@ class DatabaseToExcel {
 				row.createCell(5).setCellValue(dftValue.toString());
 			rownum++;
 		}
+		writePrimaryKey(tableName);
+		writeUniqueKey(tableName);
 	}
 
 	static void writeData(String tableName) throws SQLException {
-		out.print("Dumping data...");
 		String sql = "select * from " + tableName;
 		ResultSet rs = dbu.executeQuery(sql);
 		ResultSetMetaData rsmd = rs.getMetaData();
@@ -86,8 +86,11 @@ class DatabaseToExcel {
 		int rowNum = 1;
 		while (rs.next()) {
 			Row row = sheet.createRow(rowNum);
-			for (int i = 0; i < columnCount; i++)
-				row.createCell(i).setCellValue(rs.getString(i + 1));
+			for (int i = 0; i < columnCount; i++) {
+				String value = rs.getString(i + 1);
+				if (value != null)
+					row.createCell(i).setCellValue(value);
+			}
 			rowNum++;
 		}
 		Row row0 = sheet.createRow(0);
@@ -95,7 +98,7 @@ class DatabaseToExcel {
 			row0.createCell(i).setCellValue(rsmd.getColumnName(i + 1));
 			sheet.autoSizeColumn(i);
 		}
-		out.println("done");
+		out.println("Query OK, " + (rowNum - 1) + " rows affected");
 	}
 
 	/**
@@ -103,53 +106,32 @@ class DatabaseToExcel {
 	 * constraint may contains more than one columns.
 	 */
 	static void writePrimaryKey(String tableName) throws SQLException {
-		String sql = "select COLUMN_NAME from information_schema.key_column_usage kcu "
-				+ " join information_schema.table_constraints tc on kcu.TABLE_SCHEMA=tc.TABLE_SCHEMA "
-				+ " and kcu.TABLE_NAME=tc.TABLE_NAME and kcu.TABLE_CONSTRAINTS=tc.TABLE_CONSTRAINTS "
+		String sql = "select GROUP_CONCAT(CONCAT('`',COLUMN_NAME,'`')) from information_schema.key_column_usage kcu "
+				+ " join information_schema.table_constraints tc on kcu.TABLE_SCHEMA=tc.TABLE_SCHEMA and kcu.TABLE_NAME=tc.TABLE_NAME and kcu.CONSTRAINT_NAME=tc.CONSTRAINT_NAME "
 				+ " where tc.TABLE_SCHEMA=? and tc.TABLE_NAME=? and CONSTRAINT_TYPE='PRIMARY KEY'";
 		ResultSet rs = dbu.executeQuery(sql, DATABASE, tableName);
-		StringBuilder primaryKey = new StringBuilder();
-		while (rs.next())
-			primaryKey.append(rs.getString("COLUMN_NAME")).append(",");
-		if (primaryKey.length() != 0)
-			primaryKey.deleteCharAt(primaryKey.length() - 1);
-		// TODO Write primary key info to Excel
+		if (rs.next())
+			structureWb.getSheet(tableName).getRow(1).getCell(1)
+					.setCellValue(rs.getString(1));
 	}
 
 	/**
 	 * Note that a unique constraint can contains more than one column, and a
 	 * table may have more than one unique constraint, but different unique
-	 * constraint has different names.
+	 * constraint has different constraint names.
 	 */
 	static void writeUniqueKey(String tableName) throws SQLException {
-		String sql = "select CONSTRAINT_NAME from information_schema.table_constraints "
-				+ " where TABLE_SCHEMA=? and TABLE_NAME=? and CONSTRAINT_TYPE='UNIQUE'";
+		String sql = "select GROUP_CONCAT(CONCAT('`',COLUMN_NAME,'`')) from information_schema.key_column_usage kcu "
+				+ " join information_schema.table_constraints tc on kcu.CONSTRAINT_NAME=tc.CONSTRAINT_NAME and tc.TABLE_SCHEMA=kcu.TABLE_SCHEMA and tc.TABLE_NAME=kcu.TABLE_NAME "
+				+ " where tc.TABLE_SCHEMA=? and kcu.TABLE_NAME=? and tc.CONSTRAINT_TYPE='UNIQUE' group by tc.CONSTRAINT_NAME";
 		ResultSet rs = dbu.executeQuery(sql, DATABASE, tableName);
 		StringBuilder unique = new StringBuilder();
 		while (rs.next())
-			unique.append(
-					writeUniqueKey(tableName, rs.getString("CONSTRAINT_NAME")))
-					.append(",");
+			unique.append(rs.getString(1)).append(";");
 		if (unique.length() != 0)
 			unique.deleteCharAt(unique.length() - 1);
-		// TODO Write unique key info to Excel.
-	}
-
-	static String writeUniqueKey(String tableName, String constraintName)
-			throws SQLException {
-		String sql = "select COLUMN_NAME from information_schema.key_column_usage "
-				+ " where TABLE_SCHEMA=? and TABLE_NAME=? and CONSTRAINT_NAME=?";
-		ResultSet rs = dbu.executeQuery(sql, DATABASE, tableName,
-				constraintName);
-		rs.last();
-		if (rs.getRow() == 1)
-			return rs.getString("COLUMN_NAME");
-		rs.beforeFirst();// must move the cursor to initial position
-		StringBuilder unique = new StringBuilder("(");
-		while (rs.next())
-			unique.append(rs.getString("COLUMN_NAME")).append(",");
-		unique.deleteCharAt(unique.length() - 1).append(")");
-		return unique.toString();
+		structureWb.getSheet(tableName).getRow(1).getCell(4)
+				.setCellValue(unique.toString());
 	}
 
 	static void writeForeignKey(String tableName) throws SQLException {

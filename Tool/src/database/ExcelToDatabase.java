@@ -7,6 +7,7 @@ import static database.DbUtil.PORT;
 import static database.DbUtil.USER;
 import static database.Utils.close;
 import static java.lang.System.out;
+import static java.util.stream.Stream.of;
 import static org.apache.poi.ss.usermodel.WorkbookFactory.create;
 
 import java.io.File;
@@ -21,6 +22,10 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 
+/**
+ * @author Finally
+ * @since 1.8
+ */
 class ExcelToDatabase {
 
 	static DbUtil dbu;
@@ -38,10 +43,9 @@ class ExcelToDatabase {
 	}
 
 	static void readStructure(String tableName) throws SQLException {
-		out.print("import table " + tableName + "...");
 		dbu.execute("drop table if exists `" + tableName + "`");
 		Sheet sheet = structureWb.getSheet(tableName);
-		int rowNum = 2;
+		int rowNum = 3;
 		StringBuilder sql = new StringBuilder("create table `").append(
 				tableName).append("` (");
 		Row row = sheet.getRow(rowNum);
@@ -58,24 +62,39 @@ class ExcelToDatabase {
 					sql.append(dftValue);
 			}
 			Cell commentCell = row.getCell(3);
-			if (commentCell != null)
+			if (commentCell != null
+					&& !commentCell.getStringCellValue().isEmpty())
 				sql.append(" comment '")
-						.append(commentCell.getStringCellValue()).append("',");
+						.append(commentCell.getStringCellValue()).append("'");
+			sql.append(",");
 			rowNum++;
 			row = sheet.getRow(rowNum);
 		} while (row != null);
-		sql.deleteCharAt(sql.length() - 1);
-		sql.append(")");
+		row = sheet.getRow(1);
+		Cell primaryKeyCell = row.getCell(1);
+		if (primaryKeyCell != null
+				&& !primaryKeyCell.getStringCellValue().isEmpty())
+			sql.append("primary key (").append(primaryKeyCell).append("),");
+		Cell uniqueKeyCell = row.getCell(4);
+		if (uniqueKeyCell != null) {
+			String unique = uniqueKeyCell.getStringCellValue();
+			if (!unique.isEmpty()) {
+				String[] uniques = unique.split(";");
+				of(uniques).forEach(
+						u -> sql.append("unique key (").append(u).append("),"));
+			}
+		}
+		sql.deleteCharAt(sql.length() - 1).append(")");
 		Cell tableCommentCell = sheet.getRow(0).getCell(4);
-		if (tableCommentCell != null)
+		if (tableCommentCell != null
+				&& !tableCommentCell.getStringCellValue().isEmpty())
 			sql.append(" comment '")
 					.append(tableCommentCell.getStringCellValue()).append("'");
+		out.println(sql);
 		dbu.execute(sql.toString());
-		out.println("successful");
 	}
 
 	static void readData(String tableName) throws SQLException {
-		out.print("import data...");
 		Sheet sheet = dataWb.getSheet(tableName);
 		if (sheet.getRow(1) == null)
 			return;
@@ -98,17 +117,15 @@ class ExcelToDatabase {
 			for (int i = 0; i < columnCount; i++) {
 				sql.append("?,");
 				cell = row.getCell(i);
-				System.out.print(rowNum + ", " + i + "\t");
 				params.add(cell == null ? null : cell.getStringCellValue());
 			}
-			System.out.println();
 			sql.deleteCharAt(sql.length() - 1).append("),");
 			rowNum++;
 			row = sheet.getRow(rowNum);
 		} while (row != null);
 		sql.deleteCharAt(sql.length() - 1);
 		dbu.executeUpdate(sql.toString(), params.toArray());
-		out.println("successful");
+		out.println("Query OK, " + (rowNum - 1) + " rows affected");
 	}
 
 	public static void main(String[] args) throws InvalidFormatException,
