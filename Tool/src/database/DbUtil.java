@@ -1,17 +1,29 @@
 package database;
+
 import static java.lang.Class.forName;
+import static java.sql.DriverManager.getConnection;
 
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.Properties;
 
+/**
+ * A delegation class of Connection.
+ * 
+ * @author Finally
+ * @since 1.5
+ */
 class DbUtil implements AutoCloseable {
 
 	private Connection conn;
+
+	static final String IP = "localhost";
+	static final int PORT = 3306;
+	static final String USER = "root";
+	static final String PASSWORD = "";
+	static final String DATABASE = "parkdb";
 
 	static {
 		try {
@@ -22,50 +34,46 @@ class DbUtil implements AutoCloseable {
 	}
 
 	DbUtil(String url) throws SQLException {
-		conn = DriverManager.getConnection(url);
+		conn = getConnection(url);
 	}
 
 	DbUtil(String url, String user, String password) throws SQLException {
-		conn = DriverManager.getConnection(url, user, password);
+		conn = getConnection(url, user, password);
 	}
 
 	DbUtil(String url, Properties info) throws SQLException {
-		conn = DriverManager.getConnection(url, info);
+		conn = getConnection(url, info);
 	}
 
 	ResultSet executeQuery(String sql) throws SQLException {
-		Statement stmt = conn.createStatement();
-		return stmt.executeQuery(sql);
+		return conn.createStatement().executeQuery(sql);
 	}
 
 	ResultSet executeQuery(String sql, Object... params) throws SQLException {
-		PreparedStatement ps = prepareStatement(sql, params);
-		return ps.executeQuery();
+		return prepareStatement(sql, params).executeQuery();
 	}
 
 	int executeUpdate(String sql) throws SQLException {
-		Statement stmt = conn.createStatement();
-		return stmt.executeUpdate(sql);
+		return conn.createStatement().executeUpdate(sql);
 	}
 
 	int executeUpdate(String sql, Object... params) throws SQLException {
-		PreparedStatement ps = prepareStatement(sql, params);
-		return ps.executeUpdate();
+		return prepareStatement(sql, params).executeUpdate();
 	}
 
 	boolean execute(String sql) throws SQLException {
-		Statement stmt = conn.createStatement();
-		return stmt.execute(sql);
+		return conn.createStatement().execute(sql);
 	}
 
 	boolean execute(String sql, Object... params) throws SQLException {
-		PreparedStatement ps = prepareStatement(sql, params);
-		return ps.execute();
+		return prepareStatement(sql, params).execute();
 	}
 
 	private PreparedStatement prepareStatement(String sql, Object... params)
 			throws SQLException {
 		PreparedStatement ps = conn.prepareStatement(sql);
+		if (ps.getParameterMetaData().getParameterCount() != params.length)
+			throw new SQLException();
 		for (int i = 0; i < params.length; i++)
 			ps.setObject(i + 1, params[i]);
 		return ps;
