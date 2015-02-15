@@ -1,10 +1,5 @@
 package database;
 
-import static database.DbUtil.DATABASE;
-import static database.DbUtil.IP;
-import static database.DbUtil.PASSWORD;
-import static database.DbUtil.PORT;
-import static database.DbUtil.USER;
 import static database.Utils.close;
 import static java.lang.System.out;
 import static java.util.stream.Stream.of;
@@ -27,6 +22,12 @@ import org.apache.poi.ss.usermodel.Workbook;
  * @since 1.8
  */
 class ExcelToDatabase {
+
+	static final String IP = "localhost";
+	static final int PORT = 3306;
+	static final String USER = "root";
+	static final String PASSWORD = "";
+	static final String DATABASE = "parkdb";
 
 	static DbUtil dbu;
 

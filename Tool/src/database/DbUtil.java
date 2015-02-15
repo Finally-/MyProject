@@ -19,18 +19,6 @@ class DbUtil implements AutoCloseable {
 
 	private Connection conn;
 
-	static final String IP = "192.168.16.200";
-	static final int PORT = 3306;
-	static final String USER = "park";
-	static final String PASSWORD = "park";
-	static final String DATABASE = "parkdb";
-
-//	static final String IP = "localhost";
-//	static final int PORT = 3306;
-//	static final String USER = "root";
-//	static final String PASSWORD = "";
-//	static final String DATABASE = "parkdb";
-
 	static {
 		try {
 			forName("com.mysql.jdbc.Driver");
