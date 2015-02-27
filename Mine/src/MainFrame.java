@@ -3,9 +3,9 @@ import static java.awt.EventQueue.invokeLater;
 import javax.swing.JFrame;
 
 @SuppressWarnings("serial")
-public class MainFrame extends JFrame {
+public final class MainFrame extends JFrame {
 
-	private static MineField field = new MineField();
+	private static MineField field = new MineField(9, 9, 10);
 
 	public MainFrame() {
 		setTitle("Mine");
