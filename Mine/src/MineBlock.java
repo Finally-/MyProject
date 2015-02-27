@@ -64,8 +64,8 @@ public final class MineBlock extends JComponent {
 		this.status = status;
 	}
 
-	public boolean isCheckable() {
-		return status == BLOCK_INIT || status == BLOCK_CONFUSE;
+	public boolean isExpandable() {
+		return status == BLOCK_INIT || status == BLOCK_CONFUSE || status == BLOCK_PRESS;
 	}
 
 	@Override
@@ -100,6 +100,10 @@ public final class MineBlock extends JComponent {
 
 	@Override
 	public String toString() {
+		if (mark < 0)
+			return "*";
+		if (mark == 0)
+			return " ";
 		return valueOf(mark);
 	}
 }

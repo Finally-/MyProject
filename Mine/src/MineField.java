@@ -77,10 +77,10 @@ public final class MineField extends JComponent {
 		case FIELD_INIT:
 		case FIELD_START:
 			if (isLeftMouseButton(event)) {
-				if (block.isCheckable())
+				if (block.isExpandable())
 					block.setStatus(MineBlock.BLOCK_PRESS);
 				if (isRightMouseButton(event))
-					block.getNeighbors().stream().filter(b -> b.isCheckable())
+					block.getNeighbors().stream().filter(b -> b.isExpandable())
 							.forEach(b -> b.setStatus(MineBlock.BLOCK_PRESS));
 			} else if (isRightMouseButton(event)) {
 				switch (block.getStatus()) {
@@ -104,34 +104,43 @@ public final class MineField extends JComponent {
 	private void mouseClicked(MouseEvent event) {
 		MineBlock block = (MineBlock) event.getSource();
 		if (isLeftMouseButton(event)) {
-			int status = MineField.this.status;
 			if (status == FIELD_INIT) {
-				if (block.isCheckable()) {
+				if (block.isExpandable()) {
 					List<Boolean> mines = new ArrayList<>(rowCount * colCount - 1);
-					range(0, mineCount).forEach(i -> mines.add(false));
-					range(mineCount, mines.size()).forEach(i -> mines.add(true));
+					range(0, mineCount).forEach(i -> mines.add(true));
+					range(mineCount, rowCount * colCount - 1).forEach(i -> mines.add(false));
 					shuffle(mines);
 					mines.add(block.getRowNum() * colCount + block.getColNum(), false);
-					range(0, mines.size()).filter(mines::get).forEach(i -> {
-						blocks[i / colCount][i % colCount].setMark(MineBlock.MARK_MINE);
-						MineField.this.mines.add(block);
-						blocks[i / colCount][i % colCount].getNeighbors().forEach(b -> b.setMark(b.getMark() + 1));
-					});
-					MineField.this.status = FIELD_START;
+					range(0, mines.size()).filter(mines::get).forEach(
+							i -> {
+								blocks[i / colCount][i % colCount].setMark(MineBlock.MARK_MINE);
+								this.mines.add(blocks[i / colCount][i % colCount]);
+								blocks[i / colCount][i % colCount].getNeighbors().stream()
+										.filter(b -> b.getMark() != MineBlock.MARK_MINE)
+										.forEach(b -> b.setMark(b.getMark() + 1));
+							});
+					status = FIELD_START;
 				}
 			}
 			if (status == FIELD_START) {
-				switch (block.getStatus()) {
-				case MineBlock.MARK_MINE:
+				if (block.getMark() == MineBlock.MARK_MINE) {
 					block.setStatus(MineBlock.BLOCK_BOOM);
-					// TODO
-					break;
-				case 0:
-				default:
-				}
+					mines.stream().filter(m -> m.isExpandable()).forEach(m -> m.setStatus(MineBlock.BLOCK_MINE));
+					flags.stream().filter(f -> f.getMark() != MineBlock.MARK_MINE)
+							.forEach(f -> f.setStatus(MineBlock.BLOCK_WRONG));
+					status = FIELD_FAIL;
+				} else
+					expand(block);
+				repaint();
 			}
 			// TODO Auto-generated method stub
 		}
+	}
+
+	private void expand(MineBlock block) {
+		block.setStatus(MineBlock.BLOCK_NUMBER);
+		if (block.getMark() == 0)
+			block.getNeighbors().stream().filter(b -> b.isExpandable()).forEach(this::expand);
 	}
 
 	@Override
@@ -141,9 +150,9 @@ public final class MineField extends JComponent {
 
 	@Override
 	public String toString() {
-		StringBuilder builder = new StringBuilder(rowCount * (colCount + 1));
+		StringBuilder builder = new StringBuilder(2 * rowCount * (colCount + 1));
 		range(0, colCount).forEach(i -> {
-			range(0, rowCount).forEach(j -> builder.append(blocks[i * colCount + j]));
+			range(0, rowCount).forEach(j -> builder.append(blocks[i][j]));
 			builder.append("\n");
 		});
 		return builder.toString();
