@@ -34,10 +34,13 @@ public final class MineField extends JComponent {
 
 	private final List<MineBlock> flags = new LinkedList<>();
 
+	private int untouched;
+
 	public MineField(int rowCount, int colCount, int mineCount) {
 		this.rowCount = rowCount;
 		this.colCount = colCount;
 		this.mineCount = mineCount;
+		this.untouched = rowCount * colCount;
 		blocks = new MineBlock[rowCount][colCount];
 		mines = new LinkedList<>();
 		setLayout(new GridLayout(rowCount, colCount));
@@ -48,20 +51,20 @@ public final class MineField extends JComponent {
 		MineBlock block = blocks[rowNum][colNum] = new MineBlock(rowNum, colNum);
 		block.addMouseListener(new MouseAdapter() {
 			@Override
-			public void mouseClicked(MouseEvent e) {
-				MineField.this.mouseClicked(e);
-			}
-
-			@Override
 			public void mousePressed(MouseEvent e) {
 				MineField.this.mousePressed(e);
 			}
+
+			@Override
+			public void mouseReleased(MouseEvent e) {
+				MineField.this.mouseReleased(e);
+			}
 		});
-		add(block);
 		addNeighbor(block, rowNum - 1, colNum - 1);
 		addNeighbor(block, rowNum - 1, colNum);
 		addNeighbor(block, rowNum - 1, colNum + 1);
 		addNeighbor(block, rowNum, colNum - 1);
+		add(block);
 	}
 
 	private void addNeighbor(MineBlock block, int rowNum, int colNum) {
@@ -101,7 +104,7 @@ public final class MineField extends JComponent {
 		repaint();
 	}
 
-	private void mouseClicked(MouseEvent event) {
+	private void mouseReleased(MouseEvent event) {
 		MineBlock block = (MineBlock) event.getSource();
 		if (isLeftMouseButton(event)) {
 			if (status == FIELD_INIT) {
@@ -123,24 +126,40 @@ public final class MineField extends JComponent {
 				}
 			}
 			if (status == FIELD_START) {
-				if (block.getMark() == MineBlock.MARK_MINE) {
-					block.setStatus(MineBlock.BLOCK_BOOM);
-					mines.stream().filter(m -> m.isExpandable()).forEach(m -> m.setStatus(MineBlock.BLOCK_MINE));
-					flags.stream().filter(f -> f.getMark() != MineBlock.MARK_MINE)
-							.forEach(f -> f.setStatus(MineBlock.BLOCK_WRONG));
-					status = FIELD_FAIL;
-				} else
-					expand(block);
-				repaint();
+				expand(block);
+				if (isRightMouseButton(event)) {
+					if (block.getStatus() == MineBlock.BLOCK_NUMBER) {
+						List<MineBlock> neighbors = block.getNeighbors();
+						if (neighbors.stream().filter(b -> b.getStatus() == MineBlock.BLOCK_FLAG).count() == block
+								.getMark())
+							neighbors.forEach(this::expand);
+					}
+				}
 			}
-			// TODO Auto-generated method stub
+			repaint();
 		}
 	}
 
 	private void expand(MineBlock block) {
-		block.setStatus(MineBlock.BLOCK_NUMBER);
-		if (block.getMark() == 0)
-			block.getNeighbors().stream().filter(b -> b.isExpandable()).forEach(this::expand);
+		if (block.isExpandable()) {
+			if (block.getMark() == MineBlock.MARK_MINE) {
+				block.setStatus(MineBlock.BLOCK_BOOM);
+				mines.stream().filter(m -> m.isExpandable()).forEach(m -> m.setStatus(MineBlock.BLOCK_MINE));
+				flags.stream().filter(f -> f.getMark() != MineBlock.MARK_MINE)
+						.forEach(f -> f.setStatus(MineBlock.BLOCK_WRONG));
+				status = FIELD_FAIL;
+				return;
+			}
+			block.setStatus(MineBlock.BLOCK_NUMBER);
+			untouched--;
+			if (untouched == mineCount) {
+				mines.forEach(m -> m.setStatus(MineBlock.BLOCK_FLAG));
+				status = FIELD_SUCCESS;
+				return;
+			}
+			if (block.getMark() == 0)
+				block.getNeighbors().forEach(this::expand);
+		}
 	}
 
 	@Override
